@@ -1,5 +1,5 @@
 # 📷 Delphi Console App DirectShow Webcam Capture
-A minimalist Delphi application that demonstrates how to capture still images from a webcam using DirectShow components, without displaying any preview windows. The application silently captures a frame and saves it directly to the desktop.
+A minimalist Delphi application that demonstrates how to capture still images from a webcam using DirectShow, without displaying any preview windows. The application silently captures a frame and saves it directly to the desktop.
 
 <p align="center">
   <img src="Preview.png" alt="Preview of webcam capture">
@@ -9,7 +9,7 @@ A minimalist Delphi application that demonstrates how to capture still images fr
 - **Silent Capture**: 
   - Captures webcam frames without displaying any preview windows of any kind.
 - **DirectShow Integration**: 
-  - Uses native Windows DirectShow components for reliable webcam access
+  - Uses native Windows DirectShow for reliable webcam access
   - Implements Sample Grabber for direct frame capture
 - **Efficient Processing**:
   - Automatically detects and uses the first available webcam (you can change this if you require ability to choose webcam based on name or index simply look over the code and im sure you will easily figure it out).
@@ -21,7 +21,7 @@ A minimalist Delphi application that demonstrates how to capture still images fr
 
 ## 🔍 Overview
 The application follows these steps:
-1. Initializes DirectShow components
+1. Initializes DirectShow
 2. Locates the first available webcam
 3. Sets up a capture pipeline using Sample Grabber
 4. Captures a single frame
@@ -31,7 +31,7 @@ The application follows these steps:
 ## 🛠️ Requirements
 ### 🔧 Tools and Components
 1. **DirectX SDK**:  
-   - Required for DirectShow components
+   - Required for DirectShow
    - Usually included with Windows SDK
    - Ensure DirectShow9 units are properly referenced in your project
 
@@ -62,7 +62,7 @@ uses
    ```
    DirectShow Webcam Capture Example By: BitmasterXor
    --------------------------------
-   Initializing DirectShow components...
+   Initializing DirectShow...
    Searching for webcam...
    Webcam found! Setting up capture pipeline...
    Configuring image capture settings...
