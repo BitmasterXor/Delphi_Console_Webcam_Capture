@@ -84,7 +84,7 @@ uses
 This project is open source and available under the MIT License. Feel free to use it in your own projects.
 
 ## 📧 Contact
-Developed with ❤️ By: BitmasterXor using Delphi RAD Studio
+Discord: bitmasterxor
 
 ## 🙏 Acknowledgments
 - Thanks to Microsoft for the DirectShow framework
@@ -92,3 +92,5 @@ Developed with ❤️ By: BitmasterXor using Delphi RAD Studio
 
 ---
 **Note**: This project is intended as an educational example of using DirectShow in Delphi. For production use, consider adding error handling and configuration options.
+
+Developed with ❤️ By: BitmasterXor using Delphi RAD Studio
