@@ -30,10 +30,7 @@ The application follows these steps:
 
 ## 🛠️ Requirements
 ### 🔧 Tools and Components
-1. **Delphi RAD Studio**:  
-   - IDE required to compile the application
-   - [Delphi RAD Studio Download](https://www.embarcadero.com/products/delphi)  
-2. **DirectX SDK**:  
+1. **DirectX SDK**:  
    - Required for DirectShow components
    - Usually included with Windows SDK
    - Ensure DirectShow9 units are properly referenced in your project
