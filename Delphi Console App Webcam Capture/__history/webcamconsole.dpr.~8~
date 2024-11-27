@@ -1,0 +1,342 @@
+program WebcamCapture;
+
+{$APPTYPE CONSOLE}
+
+uses
+  Winapi.Windows,
+  Winapi.ActiveX,
+  System.SysUtils,
+  System.Classes,
+  DirectShow9,
+  Vcl.Graphics;
+
+type
+  PAM_MEDIA_TYPE = ^TAM_MEDIA_TYPE;
+  TAM_MEDIA_TYPE = record
+    majortype: TGUID;
+    subtype: TGUID;
+    bFixedSizeSamples: BOOL;
+    bTemporalCompression: BOOL;
+    lSampleSize: ULONG;
+    formattype: TGUID;
+    pUnk: IUnknown;
+    cbFormat: ULONG;
+    pbFormat: Pointer;
+  end;
+
+  ISampleGrabber = interface(IUnknown)
+    ['{6B652FFF-11FE-4FCE-92AD-0266B5D7C78F}']
+    function SetOneShot(OneShot: Boolean): HResult; stdcall;
+    function SetMediaType(const pmt: TAM_MEDIA_TYPE): HResult; stdcall;
+    function GetConnectedMediaType(pmt: PAM_MEDIA_TYPE): HResult; stdcall;
+    function SetBufferSamples(BufferThem: Boolean): HResult; stdcall;
+    function GetCurrentBuffer(var pBufferSize: integer; pBuffer: pointer): HResult; stdcall;
+    function GetCurrentSample(out ppSample: IMediaSample): HResult; stdcall;
+    function SetCallback(pCallback: IUnknown; WhichMethodToCallback: integer): HResult; stdcall;
+  end;
+
+function GetFirstCaptureDevice(out VideoInput: IBaseFilter): Boolean;
+var
+  EnumMoniker: IEnumMoniker;
+  Moniker: IMoniker;
+  Fetched: ULONG;
+  SysDevEnum: ICreateDevEnum;
+begin
+  Result := False;
+
+  // Create system device enumerator
+  if Failed(CoCreateInstance(CLSID_SystemDeviceEnum, nil, CLSCTX_INPROC_SERVER,
+    ICreateDevEnum, SysDevEnum)) then
+  begin
+    WriteLn('Failed to create system device enumerator');
+    Exit;
+  end;
+
+  // Create enumerator for video capture devices
+  if Failed(SysDevEnum.CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
+    EnumMoniker, 0)) then
+  begin
+    WriteLn('Failed to create class enumerator');
+    Exit;
+  end;
+
+  if EnumMoniker = nil then
+  begin
+    WriteLn('No video capture devices found');
+    Exit;
+  end;
+
+  // Get first video capture device
+  if EnumMoniker.Next(1, Moniker, @Fetched) = S_OK then
+  begin
+    // Bind to filter
+    Result := Succeeded(Moniker.BindToObject(nil, nil, IBaseFilter, VideoInput));
+    if not Result then
+      WriteLn('Failed to bind to video capture device');
+  end
+  else
+    WriteLn('No video capture devices available');
+end;
+
+function CaptureImage(const SavePath: string): Boolean;
+var
+  GraphBuilder: IGraphBuilder;
+  CaptureGraphBuilder2: ICaptureGraphBuilder2;
+  VideoInput: IBaseFilter;
+  SampleGrabberFilter: IBaseFilter;
+  SampleGrabber: ISampleGrabber;
+  NullRenderer: IBaseFilter;
+  MediaControl: IMediaControl;
+  mt: TAM_MEDIA_TYPE;
+  hr: HRESULT;
+  Buffer: array of Byte;
+  BufSize: Integer;
+  BMPHeader: TBitmapFileHeader;
+  Bitmap: TBitmap;
+begin
+  Result := False;
+  WriteLn('Starting capture process...');
+
+  // Create Graph Builder
+  hr := CoCreateInstance(CLSID_FilterGraph, nil, CLSCTX_INPROC_SERVER,
+    IGraphBuilder, GraphBuilder);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to create Filter Graph');
+    Exit;
+  end;
+  WriteLn('Created Filter Graph');
+
+  // Create Capture Graph Builder
+  hr := CoCreateInstance(CLSID_CaptureGraphBuilder2, nil, CLSCTX_INPROC_SERVER,
+    ICaptureGraphBuilder2, CaptureGraphBuilder2);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to create Capture Graph Builder');
+    Exit;
+  end;
+  WriteLn('Created Capture Graph Builder');
+
+  hr := CaptureGraphBuilder2.SetFiltergraph(GraphBuilder);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to set Filter Graph');
+    Exit;
+  end;
+
+  // Get first capture device
+  if not GetFirstCaptureDevice(VideoInput) then
+  begin
+    WriteLn('Failed to get video capture device');
+    Exit;
+  end;
+  WriteLn('Got video capture device');
+
+  hr := GraphBuilder.AddFilter(VideoInput, 'Video Capture');
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to add Video Capture filter');
+    Exit;
+  end;
+
+  // Create Sample Grabber
+  hr := CoCreateInstance(CLSID_SampleGrabber, nil, CLSCTX_INPROC_SERVER,
+    IBaseFilter, SampleGrabberFilter);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to create Sample Grabber');
+    Exit;
+  end;
+
+  hr := GraphBuilder.AddFilter(SampleGrabberFilter, 'Sample Grabber');
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to add Sample Grabber to graph');
+    Exit;
+  end;
+
+  hr := SampleGrabberFilter.QueryInterface(ISampleGrabber, SampleGrabber);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to get ISampleGrabber interface');
+    Exit;
+  end;
+
+  // Set media type
+  FillChar(mt, SizeOf(mt), 0);
+  mt.majortype := MEDIATYPE_Video;
+  mt.subtype := MEDIASUBTYPE_RGB24;
+  hr := SampleGrabber.SetMediaType(mt);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to set media type');
+    Exit;
+  end;
+
+  // Create and add Null Renderer
+  hr := CoCreateInstance(CLSID_NullRenderer, nil, CLSCTX_INPROC_SERVER,
+    IBaseFilter, NullRenderer);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to create Null Renderer');
+    Exit;
+  end;
+
+  hr := GraphBuilder.AddFilter(NullRenderer, 'Null Renderer');
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to add Null Renderer to graph');
+    Exit;
+  end;
+
+  // Connect everything together
+  hr := CaptureGraphBuilder2.RenderStream(@PIN_CATEGORY_PREVIEW, @MEDIATYPE_Video,
+    VideoInput, SampleGrabberFilter, NullRenderer);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to connect filters');
+    Exit;
+  end;
+  WriteLn('Connected all filters');
+
+  // Configure Sample Grabber
+  SampleGrabber.SetOneShot(True);
+  SampleGrabber.SetBufferSamples(True);
+
+  // Start capturing
+  hr := GraphBuilder.QueryInterface(IMediaControl, MediaControl);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to get Media Control');
+    Exit;
+  end;
+
+  WriteLn('Starting capture...');
+  hr := MediaControl.Run;
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to start capture');
+    Exit;
+  end;
+
+  // Wait for valid frame with timeout
+  var StartTime := GetTickCount;
+  const TIMEOUT_MS = 10000; // 10 second timeout
+  var HasValidFrame := False;
+
+  WriteLn('Waiting for valid frame...');
+  while (GetTickCount - StartTime < TIMEOUT_MS) and not HasValidFrame do
+  begin
+    // Try to get buffer size
+    BufSize := 0;
+    hr := SampleGrabber.GetCurrentBuffer(BufSize, nil);
+
+    // Check if we have a valid frame
+    if Succeeded(hr) and (BufSize > 0) then
+    begin
+      HasValidFrame := True;
+      WriteLn('Got valid frame after ', GetTickCount - StartTime, 'ms');
+      Break;
+    end;
+
+    // Small delay between checks
+    Sleep(100);
+  end;
+
+  if not HasValidFrame then
+  begin
+    WriteLn('Timeout waiting for valid frame');
+    Exit;
+  end;
+
+  WriteLn('Got buffer size: ', BufSize);
+
+  // Get the buffer
+  SetLength(Buffer, BufSize);
+  hr := SampleGrabber.GetCurrentBuffer(BufSize, @Buffer[0]);
+  if Failed(hr) then
+  begin
+    WriteLn('Failed to get buffer data');
+    Exit;
+  end;
+  WriteLn('Got buffer data');
+
+  MediaControl.Stop;
+
+  // Save to file
+  try
+    Bitmap := TBitmap.Create;
+    try
+      // Set media type for dimensions based on buffer size
+      // Buffer size 921600 suggests 640x480 resolution at 24 bits per pixel
+      const WIDTH = 640;
+      const HEIGHT = 480;
+      WriteLn(Format('Setting image dimensions to: %dx%d', [WIDTH, HEIGHT]));
+
+      Bitmap.PixelFormat := pf24bit;
+      Bitmap.Width := WIDTH;
+      Bitmap.Height := HEIGHT;
+
+      // Copy buffer to bitmap, handling row by row due to bitmap stride alignment
+      for var y := 0 to HEIGHT - 1 do
+      begin
+        var SrcPos := y * WIDTH * 3; // 3 bytes per pixel (24-bit)
+        var DestLine := Bitmap.ScanLine[HEIGHT - 1 - y]; // Flip image vertically
+        Move(Buffer[SrcPos], DestLine^, WIDTH * 3);
+      end;
+
+      // Save bitmap
+      Bitmap.SaveToFile(SavePath);
+      Result := True;
+      WriteLn('Saved image successfully');
+
+    finally
+      Bitmap.Free;
+      if mt.pbFormat <> nil then
+        CoTaskMemFree(mt.pbFormat);
+    end;
+  except
+    on E: Exception do
+      WriteLn('Error saving image: ', E.Message);
+  end;
+end;
+
+var
+  DesktopPath: string;
+
+begin
+  try
+    WriteLn('Webcam Image Capture');
+    WriteLn('-------------------');
+
+    if Failed(CoInitialize(nil)) then
+    begin
+      WriteLn('Failed to initialize COM');
+      ReadLn;
+      Exit;
+    end;
+
+    try
+      // Get desktop path
+      DesktopPath := IncludeTrailingPathDelimiter(
+        GetEnvironmentVariable('USERPROFILE')) + 'Desktop\';
+
+      WriteLn('Capturing image...');
+      if CaptureImage(DesktopPath + 'webcam_capture.bmp') then
+        WriteLn('Image saved successfully to: ', DesktopPath + 'webcam_capture.bmp')
+      else
+        WriteLn('Failed to capture image');
+    finally
+      CoUninitialize;
+    end;
+
+    WriteLn('Press Enter to exit...');
+    ReadLn;
+  except
+    on E: Exception do
+    begin
+      WriteLn('Error: ', E.Message);
+      ReadLn;
+    end;
+  end;
+end.

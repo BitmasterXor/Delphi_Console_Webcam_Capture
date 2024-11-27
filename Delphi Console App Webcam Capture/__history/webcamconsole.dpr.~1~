@@ -1,0 +1,175 @@
+program webcamconsole;
+
+{$APPTYPE CONSOLE}
+
+uses
+  Winapi.Windows,
+  System.SysUtils,
+  System.Classes,
+  Winapi.Messages,
+  ActiveX,
+  Vcl.Graphics;
+
+const
+  WM_USER = 1024;
+  WM_CAP_START = WM_USER;
+  WM_CAP_DRIVER_CONNECT = WM_CAP_START + 10;
+  WM_CAP_DRIVER_DISCONNECT = WM_CAP_START + 11;
+  WM_CAP_SET_PREVIEW = WM_CAP_START + 50;
+  WM_CAP_SET_PREVIEWRATE = WM_CAP_START + 52;
+
+type
+  // Interface definition for device enumeration
+  ICreateDevEnum = interface(IUnknown)
+    ['{29840822-5B84-11D0-BD3B-00A0C911CE86}']
+    function CreateClassEnumerator(const clsidDeviceClass: TGUID;
+      out ppEnumMoniker: IEnumMoniker; dwFlags: DWORD): HRESULT; stdcall;
+  end;
+
+var
+  CaptureWnd: HWND;
+  DeviceList: TStringList;
+  Running: Boolean;
+
+// Function to create capture window
+function capCreateCaptureWindowA(lpszWindowName: PChar; dwStyle: LongInt;
+  x: Integer; y: Integer; nWidth: Integer; nHeight: Integer; ParentWin: HWND;
+  nId: Integer): HWND; stdcall; external 'AVICAP32.DLL';
+
+procedure ListVideoDevices;
+const
+  CLSID_SystemDeviceEnum: TGUID = (D1: $62BE5D10; D2: $60EB; D3: $11D0; D4: ($BD, $3B, $00, $A0, $C9, $11, $CE, $86));
+  CLSID_VideoInputDeviceCategory: TGUID = (D1: $860BB310; D2: $5D01; D3: $11D0; D4: ($BD, $3B, $00, $A0, $C9, $11, $CE, $86));
+var
+  pDevEnum: ICreateDevEnum;
+  pClassEnum: IEnumMoniker;
+  pMoniker: IMoniker;
+  pPropertyBag: IPropertyBag;
+  v: OleVariant;
+  cFetched: ulong;
+  xname: string;
+begin
+  DeviceList := TStringList.Create;
+
+  CoInitialize(nil);
+  try
+    // Create system device enumerator
+    CoCreateInstance(CLSID_SystemDeviceEnum, nil, CLSCTX_INPROC,
+      ICreateDevEnum, pDevEnum);
+
+    if Assigned(pDevEnum) then
+    begin
+      pDevEnum.CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
+        pClassEnum, 0);
+
+      if Assigned(pClassEnum) then
+      begin
+        while (pClassEnum.Next(1, pMoniker, @cFetched) = S_OK) do
+        begin
+          if Succeeded(pMoniker.BindToStorage(nil, nil, IPropertyBag, pPropertyBag)) then
+          begin
+            if Succeeded(pPropertyBag.Read('FriendlyName', v, nil)) then
+            begin
+              xname := v;
+              DeviceList.Add(xname);
+              Writeln(DeviceList.Count, ': ', xname);
+            end;
+          end;
+        end;
+      end;
+    end;
+  finally
+    CoUninitialize;
+  end;
+end;
+
+procedure StartCapture(DeviceIndex: Integer);
+begin
+  // Create capture window (hidden)
+  CaptureWnd := capCreateCaptureWindowA('CaptureWindow',
+    WS_CHILD, 0, 0, 640, 480, 0, 0);
+
+  if CaptureWnd <> 0 then
+  begin
+    SendMessage(CaptureWnd, WM_CAP_DRIVER_CONNECT, DeviceIndex, 0);
+    SendMessage(CaptureWnd, WM_CAP_SET_PREVIEWRATE, 40, 0);
+    SendMessage(CaptureWnd, WM_CAP_SET_PREVIEW, 1, 0);
+    Writeln('Capture started for device ', DeviceIndex + 1);
+  end
+  else
+    Writeln('Error creating capture window');
+end;
+
+procedure StopCapture;
+begin
+  if CaptureWnd <> 0 then
+  begin
+    SendMessage(CaptureWnd, WM_CAP_DRIVER_DISCONNECT, 0, 0);
+    DestroyWindow(CaptureWnd);
+    CaptureWnd := 0;
+    Writeln('Capture stopped');
+  end;
+end;
+
+var
+  Choice: string;
+  DeviceIndex: Integer;
+
+begin
+  try
+    Writeln('Webcam Console Application');
+    Writeln('-------------------------');
+    Writeln('Scanning for video devices...');
+    ListVideoDevices;
+
+    if DeviceList.Count = 0 then
+    begin
+      Writeln('No video devices found!');
+      Readln;
+      Exit;
+    end;
+
+    Running := True;
+    while Running do
+    begin
+      Writeln;
+      Writeln('Commands:');
+      Writeln('1-', DeviceList.Count, ': Select and start device');
+      Writeln('S: Stop capture');
+      Writeln('Q: Quit');
+      Write('Enter command: ');
+      Readln(Choice);
+
+      Choice := UpperCase(Choice);
+      if Choice = 'Q' then
+      begin
+        Running := False;
+      end
+      else if Choice = 'S' then
+      begin
+        StopCapture;
+      end
+      else if TryStrToInt(Choice, DeviceIndex) then
+      begin
+        DeviceIndex := DeviceIndex - 1; // Convert to 0-based index
+        if (DeviceIndex >= 0) and (DeviceIndex < DeviceList.Count) then
+        begin
+          StopCapture; // Stop any existing capture
+          StartCapture(DeviceIndex);
+        end
+        else
+          Writeln('Invalid device number');
+      end
+      else
+        Writeln('Invalid command');
+    end;
+
+    // Cleanup
+    StopCapture;
+    DeviceList.Free;
+
+  except
+    on E: Exception do
+      Writeln(E.ClassName, ': ', E.Message);
+  end;
+end.
