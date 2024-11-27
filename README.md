@@ -1,4 +1,4 @@
-# 📷 Delphi Console App DirectShow Webcam Capture Example
+# 📷 Delphi Console App DirectShow Webcam Capture
 A minimalist Delphi application that demonstrates how to capture still images from a webcam using DirectShow components, without displaying any preview windows. The application silently captures a frame and saves it directly to the desktop.
 
 <p align="center">
