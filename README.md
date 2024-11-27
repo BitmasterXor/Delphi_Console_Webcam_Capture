@@ -84,7 +84,6 @@ uses
 This project is open source and available under the MIT License. Feel free to use it in your own projects.
 
 ## 📧 Contact
-Created by [Your GitHub Username]  
 Developed with ❤️ By: BitmasterXor using Delphi RAD Studio
 
 ## 🙏 Acknowledgments
